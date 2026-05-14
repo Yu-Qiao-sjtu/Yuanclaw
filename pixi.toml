@@ -1,0 +1,76 @@
+[project]
+name = "yuanclaw"
+version = "1.1.0"
+description = "RNA-seq, Microarray and Single-Cell Downstream Analysis Platform"
+channels = ["conda-forge", "bioconda"]
+platforms = ["linux-64"]
+
+[dependencies]
+# --- R core ---
+r-base = ">=4.5,<4.6"
+
+# --- CRAN packages (conda-forge) ---
+r-shiny = "*"
+r-shinyjs = "*"
+r-bslib = "*"
+r-ggplot2 = "*"
+r-dplyr = "*"
+r-dt = "*"
+r-pheatmap = "*"
+r-plotly = "*"
+r-colourpicker = "*"
+r-shinywidgets = "*"
+r-rlang = "*"
+r-tibble = "*"
+r-tidyr = "*"
+r-ggrepel = "*"
+r-rcolorbrewer = "*"
+r-venndiagram = "*"
+r-gridextra = "*"
+r-httr = "*"
+r-jsonlite = "*"
+r-base64enc = "*"
+r-later = "*"
+r-remotes = "*"
+r-rsqlite = "*"
+r-dbi = "*"
+r-svglite = "*"
+r-cairo = "*"
+r-reshape2 = "*"
+r-sourcetools = "*"
+r-htmltools = "*"
+r-knitr = "*"
+r-testthat = "*"
+
+# --- Bioconductor packages (bioconda) ---
+bioconductor-edger = "*"
+bioconductor-limma = "*"
+bioconductor-annotationdbi = "*"
+bioconductor-clusterprofiler = "*"
+"bioconductor-org.mm.eg.db" = "*"
+"bioconductor-org.hs.eg.db" = "*"
+bioconductor-enrichplot = "*"
+bioconductor-decoupler = "*"
+bioconductor-sva = "*"
+bioconductor-dose = "*"
+bioconductor-aucell = "*"
+bioconductor-gsva = "*"
+bioconductor-msigdb = "*"
+
+# --- Additional CRAN packages (GseaVis deps) ---
+r-circlize = "*"
+r-cols4all = "*"
+r-ggpp = "*"
+r-ggridges = "*"
+r-ggsci = "*"
+r-readr = "*"
+
+[tasks]
+# One-time setup: link Rprofile to use system R packages, then install extras
+setup = { cmd = "cp config/Rprofile.site .pixi/envs/default/lib/R/etc/Rprofile.site && Rscript scripts/install-extras.R" }
+# Launch the Shiny app
+app = { cmd = "R -e \"shiny::runApp('.', launch.browser=TRUE, port=3838, host='127.0.0.1')\"" }
+# Install extra packages not available via conda
+install-extras = { cmd = "Rscript scripts/install-extras.R" }
+test = { cmd = "Rscript -e \"testthat::test_dir('tests')\"" }
+check-r = { cmd = "R --version" }

@@ -58,5 +58,8 @@ test_*.csv
 docs/_site/
 docs/.gitbook/
 
+# Pixi environment
+.pixi/
+
 # Claude specific
 .claude/

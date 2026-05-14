@@ -1,0 +1,6 @@
+.First <- function() {
+  site_lib <- "/usr/local/lib/R/site-library"
+  if (dir.exists(site_lib) && !(site_lib %in% .libPaths())) {
+    .libPaths(c(site_lib, .libPaths()))
+  }
+}
