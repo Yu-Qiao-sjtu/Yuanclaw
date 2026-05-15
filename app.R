@@ -73,6 +73,7 @@ debug_log_ndjson <- function(location, message, data = list()) {
 # 加载核心模块
 tryCatch({
   source("modules/ui_theme.R")
+  source("modules/ui_minimal_theme.R")
   debug_log_ndjson("app.R:source(ui_theme)", "ui_theme_loaded", list(ok = "true"))
 }, error = function(e) {
   debug_log_ndjson("app.R:source(ui_theme)", "ui_theme_source_error", list(error = conditionMessage(e)))
