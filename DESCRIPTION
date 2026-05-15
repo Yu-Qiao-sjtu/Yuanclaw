@@ -4,7 +4,7 @@ Title: RNA-seq, Microarray and Single-Cell Downstream Analysis Platform
 Version: 1.1.0
 Date: 2026-04-21
 Authors@R: c(
-    person("Yu", "Qiao", , "yu.qiao@sjtu.edu.cn", role = c("aut", "cre"),
+    person("Yu", "Qiao", , "persist2021@163.com", role = c("aut", "cre"),
            comment = "PhD in Pharmacology, SJTU School of Pharmacy"),
     person("Feng", "Qian", role = "ths", comment = "Supervisor"),
     person("Lei", "Sun", role = "ths", comment = "Supervisor")
