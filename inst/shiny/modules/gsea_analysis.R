@@ -3,6 +3,18 @@
 # =====================================================
 
 gsea_analysis_server <- function(input, output, session, deg_results) {
+  check_runtime_deps <- function(pkgs, feature_name) {
+    missing_pkgs <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+    if (length(missing_pkgs) > 0) {
+      showNotification(
+        paste0(feature_name, " 依赖缺失: ", paste(missing_pkgs, collapse = ", "), "。请先安装后重试。"),
+        type = "error",
+        duration = 8
+      )
+      return(FALSE)
+    }
+    TRUE
+  }
 
   # =====================================================
   # GSEA 模块
@@ -49,6 +61,9 @@ gsea_analysis_server <- function(input, output, session, deg_results) {
 
   gsea_results <- eventReactive(input$run_gsea, {
     req(deg_results(), input$gmt_file)
+    if (!check_runtime_deps(c("clusterProfiler"), "GSEA分析")) {
+      return(NULL)
+    }
 
     showNotification("正在运行 GSEA...", type = "message")
 
@@ -506,190 +521,73 @@ gsea_analysis_server <- function(input, output, session, deg_results) {
     }
 
     if ("GseaVis" %in% loadedNamespaces()) {
-      # 🔥 关键修复：addGene需要与GSEA运行时相同ID类型的基因
-      # 如果GSEA用ENTREZID运行，addGene也要用ENTREZID
+      # ====================================================
+      # 🔥 核心修复：使用 gseaNb() 的 addGene 参数
+      # ====================================================
+      # 原因：gseaNb() 返回 aplot 组合对象（多子图）
+      # 在返回的对象上用 + 添加图层，会加到最后一个子图（下面板）
+      # addGene 参数在内部直接操作 ES 曲线子图，才能正确显示
+      # ====================================================
 
-      # 获取Top N基因
-      top_genes_data <- tryCatch({
-        extract_leading_edge_genes()
-      }, error = function(e) {
-        cat("❌ 调用extract_leading_edge_genes失败:", e$message, "\n")
-        NULL
-      })
+      # leading_genes 已在上方准备好（SYMBOL格式）
+      # 包含：自定义基因列表 > extract_leading_edge_genes() 结果
+      # 现在将 SYMBOL 列表转换为 addGene 所需的正确 ID 类型
+      genes_to_label <- NULL
 
-      # 基因列表（用于addGene）
-      genes_to_add <- NULL
-
-      if (!is.null(top_genes_data) && is.data.frame(top_genes_data) && nrow(top_genes_data) > 0) {
-        # top_genes_data包含SYMBOL和log2FoldChange
-        # 我们需要找到对应的ENTREZID（如果GSEA用ENTREZID运行）
-
+      if (!is.null(leading_genes) && length(leading_genes) > 0) {
         if (input$gsea_id_type == "ENTREZID") {
-          # GSEA用ENTREZID运行，addGene需要ENTREZID
-          cat("📝 GSEA使用ENTREZID运行，需要提供ENTREZID格式的基因\n")
-
-          # 从差异分析数据获取ENTREZID
+          # GSEA 用 ENTREZID 运行 → addGene 需要 ENTREZID
           deg_data <- deg_results()
-          res <- deg_data$deg_df
-          res_clean <- res[!is.na(res$SYMBOL) & !is.na(res$ENTREZID), ]
-
-          # 创建SYMBOL到ENTREZID的映射
+          res_clean <- deg_data$deg_df
+          res_clean <- res_clean[!is.na(res_clean$SYMBOL) & !is.na(res_clean$ENTREZID), ]
           symbol_to_entrez <- setNames(res_clean$ENTREZID, res_clean$SYMBOL)
-
-          # 转换为ENTREZID
-          genes_entrez <- symbol_to_entrez[top_genes_data$gene]
-          genes_entrez <- genes_entrez[!is.na(genes_entrez)]
-
-          if (length(genes_entrez) > 0) {
-            genes_to_add <- as.character(genes_entrez)
-            cat(sprintf("📝 转换为ENTREZID格式: %d 个基因\n", length(genes_to_add)))
-            cat("基因列表(ENTREZID):", paste(head(genes_to_add, 10), collapse=", "), ifelse(length(genes_to_add)>10, "...", ""), "\n")
+          entrez_ids <- symbol_to_entrez[leading_genes]
+          entrez_ids <- as.character(entrez_ids[!is.na(entrez_ids)])
+          if (length(entrez_ids) > 0) {
+            genes_to_label <- entrez_ids
+            cat(sprintf("📝 addGene 使用 ENTREZID: %d 个基因\n", length(genes_to_label)))
           }
         } else {
-          # GSEA用SYMBOL运行，addGene直接用SYMBOL
-          cat("📝 GSEA使用SYMBOL运行，直接使用SYMBOL格式\n")
-          genes_to_add <- top_genes_data$gene
-          cat(sprintf("📝 准备标注 %d 个基因（SYMBOL格式）\n", length(genes_to_add)))
-          cat("基因列表(SYMBOL):", paste(head(genes_to_add, 10), collapse=", "), ifelse(length(genes_to_add)>10, "...", ""), "\n")
+          # GSEA 用 SYMBOL 运行 → addGene 直接用 SYMBOL
+          genes_to_label <- leading_genes
+          cat(sprintf("📝 addGene 使用 SYMBOL: %d 个基因\n", length(genes_to_label)))
         }
       }
 
-      # 基础GSEA图参数
+      # 构建 gseaNb 参数，通过 addGene 在 ES 曲线上标注基因
       plot_args <- list(
-        object = gsea_obj,
+        object    = gsea_obj,
         geneSetID = pathway_id,
-        subPlot = 2,
+        subPlot   = 2,
         termWidth = 35,
-        addPval = TRUE,
-        pvalX = input$gsea_stats_x,
-        pvalY = input$gsea_stats_y
+        addPval   = TRUE,
+        pvalX     = input$gsea_stats_x,
+        pvalY     = input$gsea_stats_y
       )
 
-      # 🔥 不使用addGene参数，因为它会显示ENTREZID数字
-      # 我们自己添加SYMBOL标签，使用合适的y坐标
-      # 基因标注在leading edge区域（score较高的位置）
-
-      # 使用do.call调用gseaNb（不使用addGene）
-      p <- do.call(GseaVis::gseaNb, plot_args)
-
-      # 添加自定义SYMBOL标签
-      if (!is.null(genes_to_add) && length(genes_to_add) > 0 && !is.null(top_genes_data)) {
-        cat("📝 添加SYMBOL标签（沿着enrichment score曲线）\n")
-
-        # 🔥 关键：从GSEA对象提取enrichment score轨迹
-        # GSEA对象包含running enrichment score数据
-        tryCatch({
-          # 获取ranked gene list
-          gene_list <- gsea_obj@geneList
-          gene_names <- names(gene_list)
-
-          # 计算基因在ranked list中的位置（x坐标）
-          if (input$gsea_id_type == "ENTREZID") {
-            gene_positions <- match(genes_to_add, gene_names)  # ENTREZID
-          } else {
-            gene_positions <- match(genes_to_add, gene_names)  # SYMBOL
-          }
-
-          # 🔥 提取enrichment score轨迹
-          # clusterProfiler/fgsea 的 GSEA 对象：用 core_enrichment（leading edge）或 geneID
-          pathway_genes <- if ("core_enrichment" %in% colnames(gsea_obj@result)) {
-            as.character(gsea_obj@result$core_enrichment[selected])
-          } else {
-            as.character(gsea_obj@result$geneID[selected])
-          }
-          pathway_genes_list <- if (length(pathway_genes) == 0L || is.na(pathway_genes[1L]) || !nzchar(pathway_genes[1L])) {
-            character(0L)
-          } else {
-            unlist(strsplit(pathway_genes[1L], "/"))
-          }
-
-          # 计算running enrichment score
-          ranked_gene_scores <- gene_list[gene_names]  # 所有基因的log2FoldChange
-
-          # 计算累积enrichment score（简化版本）
-          # 实际的GSEA算法更复杂，但我们可以估算
-          gene_in_pathway <- gene_names %in% pathway_genes_list
-
-          # Running enrichment score
-          running_score <- cumsum(ranked_gene_scores * gene_in_pathway)
-          rmax <- max(abs(running_score), na.rm = TRUE)
-          if (is.finite(rmax) && rmax > 0) running_score <- running_score / rmax
-
-          # 为每个基因找到其对应的running score
-          label_data <- data.frame(
-            x = gene_positions,
-            label = top_genes_data$gene[1:min(length(genes_to_add), nrow(top_genes_data))],
-            stringsAsFactors = FALSE
-          )
-
-          # 移除没有找到位置的
-          label_data <- label_data[!is.na(label_data$x), ]
-
-          if (nrow(label_data) > 0) {
-            # 获取每个基因位置对应的enrichment score
-            label_data$y <- running_score[label_data$x]
-
-            cat(sprintf("📝 提取了 %d 个基因的enrichment score\n", nrow(label_data)))
-            cat("📝 y值范围:", min(label_data$y), "至", max(label_data$y), "\n")
-
-            annotation_color <- if(input$theme_toggle) "#00FF00" else "#CC0000"
-
-            # 添加点标记（在曲线上）
-            p <- p + geom_point(
-              data = label_data,
-              aes(x = x, y = y),
-              inherit.aes = FALSE,
-              size = 2.5,
-              color = annotation_color,
-              alpha = 0.9
-            )
-
-            # 添加文本标签（在曲线上方或下方）
-            p <- p + geom_text(
-              data = label_data,
-              aes(x = x, y = y + ifelse(y >= 0, 0.05, -0.05), label = label),
-              inherit.aes = FALSE,
-              size = 3.5,
-              color = annotation_color,
-              fontface = "bold",
-              vjust = ifelse(label_data$y >= 0, 0, 1),  # 根据y值正负调整
-              angle = 45,
-              hjust = 0,
-              check_overlap = TRUE
-            )
-
-            cat("✅ SYMBOL标签已添加到enrichment score曲线上\n")
-          }
-        }, error = function(e) {
-          cat("❌ 提取enrichment score失败:", e$message, "\n")
-          cat("⚠️ 使用备用方法：固定y坐标\n")
-
-          # 备用方案：使用固定y值
-          label_data <- data.frame(
-            x = gene_positions,
-            y = 0.5,
-            label = top_genes_data$gene[1:min(length(genes_to_add), nrow(top_genes_data))],
-            stringsAsFactors = FALSE
-          )
-
-          label_data <- label_data[!is.na(label_data$x), ]
-
-          if (nrow(label_data) > 0) {
-            annotation_color <- if(input$theme_toggle) "#00FF00" else "#CC0000"
-            p <- p + geom_text(
-              data = label_data,
-              aes(x = x, y = y, label = label),
-              inherit.aes = FALSE,
-              size = 3.5,
-              color = annotation_color,
-              fontface = "bold",
-              vjust = 1.5,
-              angle = 45,
-              hjust = 0
-            )
-          }
-        })
+      if (!is.null(genes_to_label) && length(genes_to_label) > 0) {
+        plot_args$addGene     <- genes_to_label
+        plot_args$geneCol     <- if (input$theme_toggle) "#00FF00" else "#CC0000"
+        plot_args$geneSize    <- 3.5
+        plot_args$rmSegment   <- FALSE   # 显示从曲线到标签的连接线
+        plot_args$segCol      <- if (input$theme_toggle) "#00FF00" else "#CC0000"
+        plot_args$force       <- 20
+        cat(sprintf("✅ 通过 addGene 参数在 ES 曲线上标注 %d 个基因\n", length(genes_to_label)))
       }
+
+      p <- tryCatch({
+        do.call(GseaVis::gseaNb, plot_args)
+      }, error = function(e) {
+        cat("❌ gseaNb 带 addGene 失败:", e$message, "\n", "尝试不带 addGene...\n")
+        # 降级：不带 addGene 重试
+        plot_args$addGene   <- NULL
+        plot_args$geneCol   <- NULL
+        plot_args$geneSize  <- NULL
+        plot_args$rmSegment <- NULL
+        plot_args$segCol    <- NULL
+        plot_args$force     <- NULL
+        do.call(GseaVis::gseaNb, plot_args)
+      })
 
       p <- p + theme(
         plot.title = element_text(color = txt_col, face = "bold", hjust = 0.5),

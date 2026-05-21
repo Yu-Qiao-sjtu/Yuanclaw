@@ -3,6 +3,18 @@
 # =====================================================
 
 go_analysis_server <- function(input, output, session, deg_results) {
+  check_runtime_deps <- function(pkgs, feature_name) {
+    missing_pkgs <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+    if (length(missing_pkgs) > 0) {
+      showNotification(
+        paste0(feature_name, " 依赖缺失: ", paste(missing_pkgs, collapse = ", "), "。请先安装后重试。"),
+        type = "error",
+        duration = 8
+      )
+      return(FALSE)
+    }
+    TRUE
+  }
 
   # =====================================================
   # 辅助函数：清理基因符号
@@ -200,6 +212,9 @@ go_analysis_server <- function(input, output, session, deg_results) {
   # =====================================================
   go_data_processed <- eventReactive(input$run_go, {
     req(deg_results())
+    if (!check_runtime_deps(c("clusterProfiler", "GO.db"), "GO分析")) {
+      return(NULL)
+    }
 
     # 从deg_results中提取差异分析结果和背景基因
     deg_data <- deg_results()

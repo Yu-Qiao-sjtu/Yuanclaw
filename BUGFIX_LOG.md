@@ -10,3 +10,114 @@
 - **注意**：
   - `debug-*.log` 已加入 `.gitignore`，不会被提交到仓库。
 
+
+### 2026-05-21 — `verify_code.py` 路径硬编码导致无法在非开发机运行
+
+- **现象**：执行 `python verify_code.py` 时抛出 `FileNotFoundError`，因为脚本读取了本地 Windows 绝对路径（`D:\...`）。
+- **原因**：验证脚本依赖开发者个人目录结构，未使用仓库相对路径，也不支持命令行传入目标文件。
+- **修复**：
+  - 将目标文件路径改为默认仓库相对路径 `modules/chip_analysis.R`。
+  - 新增 `--file` 参数，可手动指定任意待检文件。
+  - 新增文件不存在时的友好提示与非 0 退出码，便于 CI/自动化识别失败。
+- **结果**：脚本可在容器、CI 与不同操作系统下直接运行，不再依赖个人本地路径。
+
+### 2026-05-21 — `verify_code.py` 进一步增强（路径稳定性与兼容性）
+
+- **现象**：脚本虽已去除绝对路径，但默认路径依赖运行时 `cwd`，在非仓库根目录执行时可能误判文件不存在；同时类型注解 `str | None` 在 Python <3.10 环境不兼容。
+- **原因**：默认路径采用 `Path.cwd()`，且使用了仅 3.10+ 支持的联合类型语法。
+- **修复**：
+  - 默认路径基于 `__file__` 推导仓库根目录，不再依赖当前工作目录。
+  - 将 `str | None` 调整为 `Optional[str]`，提升至 Python 3.8+ 兼容。
+- **结果**：脚本在子目录调用与旧版 Python 解释器中更稳健。
+
+### 2026-05-21 — `verify_code.py` 误报修复（非R文件自匹配）
+
+- **现象**：`python verify_code.py --file verify_code.py` 会错误显示“全部通过”。
+- **原因**：检查逻辑是字符串包含匹配，Python 脚本本身含有这些模式字面量，导致自匹配假阳性。
+- **修复**：
+  - 增加文件类型约束，仅允许检查 `.R` 源文件。
+  - 对非 `.R` 文件返回明确错误信息与退出码 `3`。
+- **结果**：避免假阳性，验证结果更可信。
+
+### 2026-05-21 — `verify_code.py` 回归测试补充（自动化）
+
+- **现象**：此前修复主要依赖手工命令验证，存在回归风险。
+- **修复**：新增 `tests/test_verify_code.py` 自动化测试，覆盖默认路径成功、子目录调用成功、非 `.R` 拒绝、缺失文件返回码等关键行为。
+- **结果**：后续修改可通过命令快速回归，降低路径/退出码/误报问题复发概率。
+
+### 2026-05-21 — 业务流程调试预检脚本补充（无R环境）
+
+- **现象**：当前容器缺少 R，无法直接启动 Shiny 执行业务链路（导入→DE→富集）进行 debug。
+- **修复**：新增 `scripts/debug_flow_precheck.py`，在无 R 环境下先做静态流程预检：
+  - 检查 `inst/shiny/app.R` 是否加载关键模块；
+  - 检查 `modules/ui_theme.R` 是否定义关键输入控件；
+  - 检查 `modules/differential_analysis.R` 是否使用关键输入；
+  - 可选输出 CSV 数据概览（列数、行数、全零行）。
+- **结果**：可在受限环境先排除“流程接线”问题，再进入有 R 环境做动态调试。
+
+### 2026-05-21 — 预检脚本退出码修复（CSV失败不再静默成功）
+
+- **现象**：`debug_flow_precheck.py` 在 `--csv` 文件不存在时仅打印 warning，但仍返回 `0`，容易误判“流程通过”。
+- **原因**：异常分支未影响最终退出码。
+- **修复**：当显式传入 `--csv` 且数据概览失败时返回退出码 `4`；保留接线问题返回码 `2`。
+- **结果**：自动化调试中可准确识别“接线通过但数据文件失败”的场景。
+
+### 2026-05-21 — 启动容错修复（clusterProfiler/GO.db 缺失时不中断）
+
+- **现象**：`pixi run app` 在启动阶段因 `clusterProfiler` 依赖 `GO.db` 缺失而直接中断，导致整站无法进入。
+- **原因**：`app.R` 与 `inst/shiny/app.R` 对 `clusterProfiler` 采用强制 `library()` 加载。
+- **修复**：
+  - 改为先检测 `requireNamespace("clusterProfiler")`；
+  - 若不可用，仅给出 warning，不中断其余模块启动。
+- **结果**：即使 GO/KEGG/GSEA 受限，DE/数据导入/其它模块可先启动并继续业务调试。
+
+### 2026-05-21 — 无图形环境启动修复（禁用自动打开浏览器）
+
+- **现象**：应用已监听 `127.0.0.1:3838` 后，因 `browseURL` 在无图形环境报错（`'browser' must be a non-empty character string`）而退出。
+- **原因**：`pixi` 的 `app` 任务使用 `launch.browser=TRUE`。
+- **修复**：将 `pixi.toml` 的 `app` 任务改为 `launch.browser=FALSE`。
+- **结果**：在容器/CI 这类无 GUI 环境可稳定启动服务。
+
+### 2026-05-21 — 功能级容错修复（GO/KEGG/GSEA 缺依赖时友好失败）
+
+- **现象**：虽然应用可启动，但点击 GO/KEGG/GSEA 仍可能因 `clusterProfiler` / `GO.db` 缺失直接报错。
+- **原因**：模块运行时未做依赖前置校验。
+- **修复**：
+  - 在 `go_analysis.R`、`kegg_enrichment.R`、`gsea_analysis.R` 增加 `check_runtime_deps()`；
+  - 在 `run_go` / `run_kegg` / `run_gsea` 的 `eventReactive` 开始处做依赖检查；
+  - 缺失依赖时给出明确通知并 `return(NULL)`，避免硬崩溃。
+- **结果**：业务流程可继续调试，缺失模块以“可诊断、可恢复”的方式失败。
+
+### 2026-05-21 — KEGG离线优先 + 在线回退策略（主流程）
+
+- **现象**：主流程 KEGG 之前依赖 `biofree.qyKEGGtools` 强制成功，离线库不可用时会直接失败，无法自动尝试在线 `enrichKEGG`。
+- **修复**：
+  - `kegg_enrichment.R` 主流程改为“离线优先、在线回退”：
+    1) 优先 `biofree.qyKEGGtools::enrich_local_KEGG`；
+    2) 若离线不可用/失败，自动回退 `clusterProfiler::enrichKEGG`；
+    3) 两者都失败才报最终错误。
+- **结果**：在不同网络/证书/离线库状态下，KEGG 模块具备更高可用性与可恢复性。
+
+### 2026-05-21 — KEGG 放宽参数自动重试
+
+- **现象**：在低样本或映射覆盖偏低场景下，KEGG 首次富集常返回 0 条结果。
+- **修复**：在 KEGG 主流程新增自动重试策略：
+  - 首次按常规参数（`pCutoff=input$kegg_p`, `minGSSize=10`, `maxGSSize=500`）；
+  - 若未命中，则自动放宽参数重试（`pCutoff=0.2`, `minGSSize=5`, `maxGSSize=1000`）；
+  - 离线与在线路径均应用该策略。
+- **结果**：提升“可出结果”概率，同时保留首次严格参数结果优先。
+
+### 2026-05-21 — KEGG 切换为纯 biofree 离线模式
+
+- **需求**：KEGG 仅允许通过 `biofree.qyKEGGtools` 执行，不再使用在线 `clusterProfiler::enrichKEGG` 回退。
+- **修复**：
+  - 删除主流程中的在线回退分支；
+  - 保留离线主流程与放宽参数重试（`p=0.2`, `minGSSize=5`, `maxGSSize=1000`）；
+  - 离线包缺失或离线未命中时给出明确提示。
+- **结果**：KEGG 行为与设计目标一致：纯离线、可重试、可诊断。
+
+### 2026-05-21 — 移除 KEGG 在线路径（含单列基因流程）
+
+- **需求**：KEGG 必须仅通过 `biofree.qyKEGGtools` 执行，禁止 `clusterProfiler::enrichKEGG` 在线路径。
+- **修复**：删除单列基因 KEGG 流程中的 `clusterProfiler::enrichKEGG` 回退分支；主流程与单列流程均保持纯离线。
+- **结果**：代码层面不再调用在线 KEGG 接口，完全符合纯 biofree 离线策略。

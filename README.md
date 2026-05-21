@@ -36,6 +36,21 @@
 
 ---
 
+
+## 🗂️ Repository Layout
+
+To reduce path confusion and keep runtime/debug flows predictable, the project now follows a documented layout baseline.
+
+- Runtime app entrypoints: `app.R` and `inst/shiny/app.R`
+- Runtime modules: `modules/` and `inst/shiny/modules/` (kept in sync)
+- Operational scripts: `scripts/`
+- Automated tests: `tests/`
+- Historical materials: `archive/`
+
+See detailed structure and cleanup conventions in [`docs/REPO_STRUCTURE.md`](docs/REPO_STRUCTURE.md).
+
+---
+
 ## 🚀 Installation & Launch
 
 ### Quick Start

@@ -67,3 +67,10 @@ docs/.gitbook/
 
 # Claude specific
 .claude/
+
+# Local Bioconductor/KEGG build artifacts
+KEGG.db_*.tar.gz
+
+# Python cache
+__pycache__/
+tests/__pycache__/

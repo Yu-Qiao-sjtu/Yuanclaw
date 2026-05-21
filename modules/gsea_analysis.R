@@ -3,6 +3,18 @@
 # =====================================================
 
 gsea_analysis_server <- function(input, output, session, deg_results) {
+  check_runtime_deps <- function(pkgs, feature_name) {
+    missing_pkgs <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+    if (length(missing_pkgs) > 0) {
+      showNotification(
+        paste0(feature_name, " 依赖缺失: ", paste(missing_pkgs, collapse = ", "), "。请先安装后重试。"),
+        type = "error",
+        duration = 8
+      )
+      return(FALSE)
+    }
+    TRUE
+  }
 
   # =====================================================
   # GSEA 模块
@@ -49,6 +61,9 @@ gsea_analysis_server <- function(input, output, session, deg_results) {
 
   gsea_results <- eventReactive(input$run_gsea, {
     req(deg_results(), input$gmt_file)
+    if (!check_runtime_deps(c("clusterProfiler"), "GSEA分析")) {
+      return(NULL)
+    }
 
     showNotification("正在运行 GSEA...", type = "message")
 
