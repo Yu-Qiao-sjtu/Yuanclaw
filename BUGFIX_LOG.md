@@ -115,3 +115,9 @@
   - 保留离线主流程与放宽参数重试（`p=0.2`, `minGSSize=5`, `maxGSSize=1000`）；
   - 离线包缺失或离线未命中时给出明确提示。
 - **结果**：KEGG 行为与设计目标一致：纯离线、可重试、可诊断。
+
+### 2026-05-21 — 移除 KEGG 在线路径（含单列基因流程）
+
+- **需求**：KEGG 必须仅通过 `biofree.qyKEGGtools` 执行，禁止 `clusterProfiler::enrichKEGG` 在线路径。
+- **修复**：删除单列基因 KEGG 流程中的 `clusterProfiler::enrichKEGG` 回退分支；主流程与单列流程均保持纯离线。
+- **结果**：代码层面不再调用在线 KEGG 接口，完全符合纯 biofree 离线策略。

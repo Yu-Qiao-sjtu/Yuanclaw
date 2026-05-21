@@ -640,20 +640,9 @@ kegg_enrichment_server <- function(input, output, session, deg_results) {
         })
       }
 
-      # 如果biofree.qyKEGGtools不可用或失败，尝试使用clusterProfiler::enrichKEGG
-      if(is.null(kegg_obj) && require("clusterProfiler", quietly = TRUE)) {
-        showNotification("使用clusterProfiler::enrichKEGG进行单列基因KEGG富集分析", type = "message")
-
-        # 设置KEGG数据库的物种代码
-        kegg_org <- if(input$single_gene_species == "mmu") "mmu" else "hsa"
-
-        kegg_obj <- clusterProfiler::enrichKEGG(
-          gene = entrez_ids,
-          organism = kegg_org,
-          pvalueCutoff = input$single_gene_kegg_p,
-          pAdjustMethod = "BH",
-          universe = universe
-        )
+      if (is.null(kegg_obj)) {
+        showNotification("纯离线模式：biofree.qyKEGGtools 未返回有效结果。", type = "warning")
+        return(NULL)
       }
 
       if (is.null(kegg_obj) || nrow(kegg_obj@result) == 0) {
