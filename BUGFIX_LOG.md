@@ -61,3 +61,19 @@
 - **原因**：异常分支未影响最终退出码。
 - **修复**：当显式传入 `--csv` 且数据概览失败时返回退出码 `4`；保留接线问题返回码 `2`。
 - **结果**：自动化调试中可准确识别“接线通过但数据文件失败”的场景。
+
+### 2026-05-21 — 启动容错修复（clusterProfiler/GO.db 缺失时不中断）
+
+- **现象**：`pixi run app` 在启动阶段因 `clusterProfiler` 依赖 `GO.db` 缺失而直接中断，导致整站无法进入。
+- **原因**：`app.R` 与 `inst/shiny/app.R` 对 `clusterProfiler` 采用强制 `library()` 加载。
+- **修复**：
+  - 改为先检测 `requireNamespace("clusterProfiler")`；
+  - 若不可用，仅给出 warning，不中断其余模块启动。
+- **结果**：即使 GO/KEGG/GSEA 受限，DE/数据导入/其它模块可先启动并继续业务调试。
+
+### 2026-05-21 — 无图形环境启动修复（禁用自动打开浏览器）
+
+- **现象**：应用已监听 `127.0.0.1:3838` 后，因 `browseURL` 在无图形环境报错（`'browser' must be a non-empty character string`）而退出。
+- **原因**：`pixi` 的 `app` 任务使用 `launch.browser=TRUE`。
+- **修复**：将 `pixi.toml` 的 `app` 任务改为 `launch.browser=FALSE`。
+- **结果**：在容器/CI 这类无 GUI 环境可稳定启动服务。

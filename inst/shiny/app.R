@@ -28,7 +28,11 @@ suppressPackageStartupMessages({
   library(edgeR)
   library(limma)
   library(AnnotationDbi)
-  library(clusterProfiler)
+  if (!requireNamespace("clusterProfiler", quietly = TRUE)) {
+    warning("clusterProfiler 未安装或依赖缺失（常见为 GO.db）。GO/KEGG/GSEA 功能将受限；其余模块可继续使用。")
+  } else {
+    library(clusterProfiler)
+  }
   try(library(org.Mm.eg.db), silent=TRUE)
   try(library(org.Hs.eg.db), silent=TRUE)
   try(library(biofree.qyKEGGtools), silent=TRUE)

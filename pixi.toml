@@ -64,12 +64,13 @@ r-ggpp = "*"
 r-ggridges = "*"
 r-ggsci = "*"
 r-readr = "*"
+"bioconductor-go.db" = ">=3.22.0,<4"
 
 [tasks]
 # One-time setup: link Rprofile to use system R packages, then install extras
 setup = { cmd = "cp config/Rprofile.site .pixi/envs/default/lib/R/etc/Rprofile.site && Rscript scripts/install-extras.R" }
 # Launch the Shiny app
-app = { cmd = "R -e \"shiny::runApp('.', launch.browser=TRUE, port=3838, host='127.0.0.1')\"" }
+app = { cmd = "R -e \"shiny::runApp('.', launch.browser=FALSE, port=3838, host='127.0.0.1')\"" }
 # Install extra packages not available via conda
 install-extras = { cmd = "Rscript scripts/install-extras.R" }
 test = { cmd = "Rscript -e \"testthat::test_dir('tests')\"" }
